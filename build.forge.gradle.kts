@@ -76,5 +76,6 @@ tasks.named("createMinecraftArtifacts") {
 }
 
 stonecutter {
-
+	val (version, loader) = current.project.split('-', limit = 2)
+	properties.tags(version, loader)
 }

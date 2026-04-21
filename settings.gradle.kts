@@ -14,13 +14,13 @@ pluginManagement {
 
 plugins {
 	id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
-	id("dev.kikugie.stonecutter") version "0.8"
+	id("dev.kikugie.stonecutter") version "0.9.2"
 }
 
 stonecutter {
 	create(rootProject) {
 		fun match(version: String, vararg loaders: String) =
-			loaders.forEach { version("$version-$it", version).buildscript = "build.$it.gradle.kts" }
+			loaders.forEach { version("$version-$it", version).buildscript = getBuildscript(it, version) }
 
 		match("1.21.7", "fabric", "neoforge")
 		match("1.21.1", "fabric", "neoforge")
@@ -28,4 +28,15 @@ stonecutter {
 
 		vcsVersion = "1.21.7-fabric"
 	}
+}
+
+private fun getBuildscript(loader: String, version: String): String {
+	if (loader == "fabric") {
+		return if (version.startsWith("1")) { // this will be a problem in the far future lol
+			"build.fabrico.gradle.kts"
+		} else {
+			"build.fabricm.gradle.kts"
+		}
+	}
+	return "build.$loader.gradle.kts"
 }

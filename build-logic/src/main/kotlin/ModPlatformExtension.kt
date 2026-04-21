@@ -64,7 +64,11 @@ abstract class Dependency @Inject constructor(val name: String) {
 	}
 
 	fun slug(modrinthSlug: String? = null, curseforgeSlug: String? = null) {
-		if (modrinthSlug != null) { modrinth.set(modrinthSlug) }
-		if (curseforgeSlug != null) { curseforge.set(curseforgeSlug) }
+		if (modrinthSlug != null) {
+			modrinth.set(modrinthSlug)
+		}
+		if (curseforgeSlug != null) {
+			curseforge.set(curseforgeSlug)
+		}
 	}
 }

@@ -4,7 +4,7 @@ plugins {
 }
 
 platform {
-	loader = "fabric"
+	loader = "fabrico"
 	dependencies {
 		required("minecraft") {
 			fabricLikeVersionRange = prop("deps.minecraft")
@@ -67,6 +67,9 @@ dependencies {
 }
 
 stonecutter {
+	val (version, loader) = current.project.split('-', limit = 2)
+	properties.tags(version, loader)
+
 	replacements.string(current.parsed >= "1.21.11") {
 		replace("ResourceLocation", "Identifier")
 		replace("location()", "identifier()")

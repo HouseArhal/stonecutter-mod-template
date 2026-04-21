@@ -1,26 +1,22 @@
 @file:Suppress("unused", "DuplicatedCode")
 
-import com.vanniktech.maven.publish.MavenPublishBaseExtension
-import dev.kikugie.commons.collections.getOrThrow
 import dev.kikugie.fletching_table.extension.FletchingTableExtension
-import dev.kikugie.stonecutter.build.StonecutterBuildExtension
-import me.modmuss50.mpp.ModPublishExtension
-import me.modmuss50.mpp.ReleaseType
-import org.gradle.api.JavaVersion
-import org.gradle.api.NamedDomainObjectContainer
+import org.gradle.api.DefaultTask
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.dsl.RepositoryHandler
 import org.gradle.api.artifacts.repositories.MavenArtifactRepository
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Copy
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
 import org.gradle.internal.extensions.stdlib.toDefaultLowerCase
 import org.gradle.jvm.tasks.Jar
 import org.gradle.kotlin.dsl.*
 import org.gradle.language.jvm.tasks.ProcessResources
-import org.gradle.plugins.ide.idea.model.IdeaModel
-import java.util.*
 import javax.inject.Inject
 
 fun Project.prop(name: String): String = (findProperty(name) ?: "") as String
@@ -36,396 +32,153 @@ fun RepositoryHandler.strictMaven(
 	filter { groups.forEach(::includeGroup) }
 }
 
-abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
-	override fun apply(project: Project) = with(project) {
-		val inferredLoader = project.buildFile.name.substringAfter('.').replace(".gradle.kts", "")
-		val inferredLoaderIsFabric = inferredLoader == "fabric"
+abstract class GenerateModManifestTask : DefaultTask() {
+	@get:Input
+	abstract val manifestPath: Property<String>
 
-		val extension = extensions.create("platform", ModPlatformExtension::class.java).apply {
-			loader.convention(inferredLoader)
-			jarTask.convention(if (inferredLoaderIsFabric) "remapJar" else "jar")
-			sourcesJarTask.convention(if (inferredLoaderIsFabric) "remapSourcesJar" else "sourcesJar")
-		}
+	@get:Input
+	abstract val content: Property<String>
 
-		listOf(
-			"org.jetbrains.kotlin.jvm",
-			"com.google.devtools.ksp",
-			"dev.kikugie.fletching-table"
-		).forEach { apply(plugin = it) }
+	@get:OutputDirectory
+	abstract val outputDir: DirectoryProperty
 
-		afterEvaluate {
-			configureProject(extension)
-		}
-	}
-
-	private fun Project.configureProject(extension: ModPlatformExtension) {
-		val loader = extension.loader.get()
-
-		val modId = prop("mod.id")
-		val modVersion = prop("mod.version")
-		val channelTag = prop("mod.channel_tag")
-		val mcVersion = prop("deps.minecraft")
-
-		val stonecutter = extensions.getByType<StonecutterBuildExtension>()
-
-		listOf(
-			"java",
-			"me.modmuss50.mod-publish-plugin",
-			"idea",
-		).forEach { apply(plugin = it) }
-
-		val isSnapshot = !envTrue("MOD_IS_RELEASE")
-
-		val baseVersion = "$modVersion$channelTag"
-		val snapshotSuffix = if (isSnapshot) "-SNAPSHOT" else ""
-		version = "$baseVersion-$loader+$mcVersion$snapshotSuffix"
-		val basicVersion = "$baseVersion$snapshotSuffix"
-
-		extension.requiredJava.set(
-			when {
-				stonecutter.eval(stonecutter.current.version, ">=1.20.6") -> JavaVersion.VERSION_21
-				stonecutter.eval(stonecutter.current.version, ">=1.18") -> JavaVersion.VERSION_17
-				stonecutter.eval(stonecutter.current.version, ">=1.17") -> JavaVersion.VERSION_16
-				else -> JavaVersion.VERSION_1_8
-			}
-		)
-
-		if (loader == "fabric" || loader == "quilt") {
-			extension.dependencies {
-				required("java") {
-					fabricLikeVersionRange = ">=${extension.requiredJava.get().majorVersion}"
-				}
-			}
-		}
-
-		configureFletchingTable()
-		configureJarTask(modId, loader)
-		configureIdea()
-		configureProcessResources(
-			loader,
-			modId,
-			"$modVersion$channelTag",
-			mcVersion,
-			extension
-			)
-		configureJava(stonecutter, extension.requiredJava.get())
-		registerBuildAndCollectTask(extension, baseVersion)
-		configurePublishing(extension, loader, stonecutter, basicVersion, channelTag, version.toString())
-		if (envTrue("PUB_MAVEN_ENABLE")) {
-			configureMavenPublishing(isSnapshot)
-		}
-	}
-
-
-	private fun Project.configureMavenPublishing(
-		isSnapshot: Boolean
-	) {
-		env("PUB_MAVEN_USERNAME_MAVEN_CENTRAL")?.let {
-			extensions.extraProperties["mavenCentralUsername"] = it
-		}
-
-		env("PUB_MAVEN_PASSWORD_MAVEN_CENTRAL")?.let {
-			extensions.extraProperties["mavenCentralPassword"] = it
-		}
-
-		extensions.configure<MavenPublishBaseExtension>("mavenPublishing") {
-			if (envTrue("PUB_MAVEN_ENABLE_MAVEN_CENTRAL")) {
-				if (!isSnapshot || envTrue("PUB_MAVEN_ENABLE_MAVEN_CENTRAL_SNAPSHOT")) {
-					publishToMavenCentral()
-				}
-			}
-			signAllPublications()
-
-			coordinates("${prop("mod.group")}.${prop("mod.id")}", prop("mod.id"), version as String)
-			pom {
-				name.set(prop("mod.name"))
-				description.set(prop("mod.description"))
-				inceptionYear.set(prop("mod.inception_year"))
-				url.set(prop("mod.homepage_url"))
-				licenses {
-					license {
-						name.set(prop("mod.license.name"))
-						url.set(prop("mod.license.url"))
-						distribution.set(prop("mod.license.dist"))
-					}
-				}
-				developers {
-					val developerIds = prop("mod.pom.developer.ids").split(",")
-					val developerNames = prop("mod.pom.developer.names").split(",")
-					val developerUrls = prop("mod.pom.developer.urls").split(",")
-
-					for (i in developerIds.indices) {
-						developer {
-							id.set(developerIds[i].trim())
-							name.set(developerNames.getOrThrow(i) { "mod.pom.developer.names is not the same size as mod.pom.developer.ids" }
-								.trim())
-							url.set(developerUrls.getOrThrow(i) { "mod.pom.developer.urls is not the same size as mod.pom.developer.ids" }
-								.trim())
-						}
-					}
-				}
-				scm {
-					url.set(prop("mod.sources_url"))
-					connection.set(scmConnectionFromUrl(prop("mod.sources_url")))
-					developerConnection.set(scmDeveloperConnectionFromUrl(prop("mod.sources_url")))
-				}
-			}
-		}
-	}
-
-	private fun Project.configureJarTask(modId: String, loader: String) {
-		val isForge = loader == "forge"
-
-		tasks.withType<Jar>().configureEach {
-			archiveBaseName.set(modId)
-			if (isForge) {
-				manifest.attributes(
-					"MixinConfigs" to "${modId}.mixins.json"
-				)
-			}
-		}
-	}
-
-	private fun Project.configureProcessResources(
-		loader: String,
-		modId: String,
-		modVersion: String,
-		mcVersion: String,
-		extension: ModPlatformExtension,
-	) {
-		val requiredJava = extension.requiredJava.get()
-		val isFabric = loader == "fabric"
-		val isNeoForge = loader == "neoforge"
-		val isForge = loader == "forge"
-
-		tasks.named<ProcessResources>("processResources") {
-			dependsOn(tasks.named("stonecutterGenerate"))
-			dependsOn("kspKotlin")
-
-			filesMatching("*.mixins.json") { expand("java" to "JAVA_${requiredJava.majorVersion}") }
-
-			var contributors = prop("mod.contributors")
-			var authors = prop("mod.authors")
-			var issuesUrl = prop("mod.issues_url")
-			if (issuesUrl == "") issuesUrl = prop("mod.sources_url") + "/issues"
-
-			if (isFabric) {
-				contributors = contributors.replace(", ", "\", \"")
-				authors = authors.replace(", ", "\", \"")
-			}
-
-			val dependencies = buildDependenciesBlock(isFabric, modId, extension.dependencies)
-
-			val props = mapOf(
-				"version" to modVersion,
-				"minecraft" to mcVersion,
-				"id" to modId,
-				"name" to prop("mod.name"),
-				"group" to prop("mod.group"),
-				"authors" to authors,
-				"contributors" to contributors,
-				"license" to prop("mod.license"),
-				"description" to prop("mod.description"),
-				"issues_url" to issuesUrl,
-				"homepage_url" to prop("mod.homepage_url"),
-				"sources_url" to prop("mod.sources_url"),
-				"discord_url" to prop("mod.discord_url"),
-				"dependencies" to dependencies
-			)
-
-			when {
-				isFabric -> {
-					filesMatching("fabric.mod.json") { expand(props) }
-					exclude("META-INF/mods.toml", "META-INF/neoforge.mods.toml", "aw/*.cfg", ".cache", "pack.mcmeta")
-				}
-
-				isNeoForge -> {
-					filesMatching("META-INF/neoforge.mods.toml") { expand(props) }
-					exclude("META-INF/mods.toml", "fabric.mod.json", "aw/*.accesswidener", ".cache", "pack.mcmeta")
-				}
-
-				isForge -> {
-					filesMatching("META-INF/mods.toml") { expand(props) }
-					exclude("META-INF/neoforge.mods.toml", "fabric.mod.json", "aw/*.accesswidener", ".cache")
-				}
-			}
-		}
-	}
-
-	private fun buildDependenciesBlock(
-		isFabric: Boolean, modId: String, deps: DependenciesConfig
-	): String = if (isFabric) {
-		buildString {
-			fun joinGroup(
-				name: String, container: NamedDomainObjectContainer<Dependency>
-			): String? {
-				if (container.isEmpty()) return null
-				val entries = container.joinToString(",\n    ") {
-					"\"${it.modid.get()}\": \"${it.fabricLikeVersionRange.get()}\""
-				}
-				return "\n  \"$name\": {\n    $entries\n  }"
-			}
-
-			val groups = listOfNotNull(
-				joinGroup("depends", deps.required),
-				joinGroup("recommends", deps.optional),
-				joinGroup("breaks", deps.incompatible)
-			)
-
-			append(groups.joinToString(","))
-		}
-	} else {
-		buildString {
-			fun appendBlock(container: NamedDomainObjectContainer<Dependency>, type: String) {
-				container.forEach {
-					appendLine(
-						"""
-
-						[[dependencies.$modId]]
-						modId = "${it.modid.get()}"
-						side = "${it.environment.get().uppercase(Locale.getDefault())}"
-                        versionRange = "${it.forgeLikeVersionRange.get()}"
-						mandatory = ${if (type == "required") "true" else "false"}
-                        type = "$type"
-						""".replace("                  ", "").trimIndent()
-					)
-				}
-			}
-
-			appendBlock(deps.required, "required")
-			appendBlock(deps.optional, "optional")
-			appendBlock(deps.incompatible, "incompatible")
-		}
-	}
-
-	private fun Project.configureJava(stonecutter: StonecutterBuildExtension, requiredJava: JavaVersion) {
-		extensions.configure<JavaPluginExtension>("java") {
-			withSourcesJar()
-			withJavadocJar()
-			sourceCompatibility = requiredJava
-			targetCompatibility = requiredJava
-		}
-	}
-
-	private fun Project.configureIdea() {
-		extensions.configure<IdeaModel>("idea") {
-			module {
-				isDownloadJavadoc = true
-				isDownloadSources = true
-			}
-		}
-	}
-
-	private fun Project.configureFletchingTable() {
-		extensions.configure<FletchingTableExtension> {
-			mixins.create("main").apply {
-				mixin("default", "${prop("mod.id")}.mixins.json")
-			}
-			j52j.register("main") {
-				extension("json", "**/*.json5")
-			}
-		}
-	}
-
-	private fun Project.registerBuildAndCollectTask(extension: ModPlatformExtension, modBasicVersion: String) {
-		tasks.register<Copy>("buildAndCollect") {
-			group = "build"
-			from(
-				tasks.named(extension.jarTask.get()),
-				tasks.named(extension.sourcesJarTask.get()),
-				tasks.named("javadocJar").get()
-			)
-			into(rootProject.layout.buildDirectory.file("libs/$modBasicVersion"))
-			dependsOn("build")
-		}
-	}
-
-	private fun Project.configurePublishing(
-		ext: ModPlatformExtension,
-		loader: String,
-		stonecutter: StonecutterBuildExtension,
-		modBasicVersion: String,
-		channelTag: String,
-		fullVersion: String,
-	) {
-		val additionalVersions = (findProperty("publish.additionalVersions") as String?)?.split(',')?.map(String::trim)
-			?.filter(String::isNotEmpty).orEmpty()
-
-		val releaseType = ReleaseType.of(
-			channelTag.substringAfter('-').substringBefore('.').ifEmpty { "stable" })
-
-		extensions.configure<ModPublishExtension>("publishMods") {
-			val mrStaging = envTrue("TEST_PUBLISHING_WITH_MR_STAGING")
-
-			val modrinthAccessToken = env("MODRINTH_API_TOKEN")
-			val curseforgeAccessToken = env("CURSEFORGE_API_TOKEN")
-			if (!envTrue("ENABLE_PUBLISHING")) {
-				dryRun = true
-			}
-
-			val jarTask = tasks.named(ext.jarTask.get()).map { it as Jar }
-			val srcJarTask = tasks.named(ext.sourcesJarTask.get()).map { it as Jar }
-			val currentVersion = stonecutter.current.version
-			val deps = ext.dependencies
-
-			file.set(jarTask.flatMap(Jar::getArchiveFile))
-			additionalFiles.from(srcJarTask.flatMap(Jar::getArchiveFile))
-			type = releaseType
-			version = fullVersion
-			changelog.set(rootProject.file("CHANGELOG.md").readText())
-			modLoaders.add(loader)
-
-			displayName = "${prop("mod.name")} $modBasicVersion ${loader.replaceFirstChar(Char::titlecase)} $currentVersion"
-
-			modrinth(deps, currentVersion, additionalVersions, mrStaging, modrinthAccessToken)
-			if (!mrStaging) curseforge(deps, currentVersion, additionalVersions, false, curseforgeAccessToken)
-		}
-	}
-
-	fun whenNotNull(stringProp: Property<String>, action: (String) -> Unit) {
-		if (!stringProp.orNull.isNullOrBlank()) action(stringProp.get())
-	}
-
-	private fun ModPublishExtension.modrinth(
-		deps: DependenciesConfig,
-		currentVersion: String,
-		additionalVersions: List<String>,
-		staging: Boolean,
-		acesssToken: String?
-	) = modrinth {
-		if (staging) apiEndpoint = "https://staging-api.modrinth.com/v2"
-		projectId = project.prop("publish.modrinth")
-		accessToken = acesssToken
-		minecraftVersions.addAll(listOf(currentVersion) + additionalVersions)
-
-		if (!staging) {
-			deps.required.forEach { dep -> whenNotNull(dep.modrinth) { requires(it) } }
-			deps.optional.forEach { dep -> whenNotNull(dep.modrinth) { optional(it) } }
-			deps.incompatible.forEach { dep -> whenNotNull(dep.modrinth) { incompatible(it) } }
-			deps.embeds.forEach { dep -> whenNotNull(dep.modrinth) { embeds(it) } }
-		}
-	}
-
-	private fun ModPublishExtension.curseforge(
-		deps: DependenciesConfig,
-		currentVersion: String,
-		additionalVersions: List<String>,
-		staging: Boolean,
-		acesssToken: String?
-	) = curseforge {
-		projectId = project.prop("publish.curseforge")
-		accessToken = acesssToken
-		minecraftVersions.addAll(listOf(currentVersion) + additionalVersions)
-
-		deps.required.forEach { dep -> whenNotNull(dep.curseforge) { requires(it) } }
-		deps.optional.forEach { dep -> whenNotNull(dep.curseforge) { optional(it) } }
-		deps.incompatible.forEach { dep -> whenNotNull(dep.curseforge) { incompatible(it) } }
-		deps.embeds.forEach { dep -> whenNotNull(dep.curseforge) { embeds(it) } }
+	@TaskAction
+	fun generate() {
+		val file = outputDir.get().asFile.resolve(manifestPath.get())
+		file.parentFile.mkdirs()
+		file.writeText(content.get())
 	}
 }
 
-private fun scmConnectionFromUrl(scmUrl: String): String =
-	scmUrl.replace("https://", "scm:git:git://").removeSuffix("/") + ".git"
+abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
+	override fun apply(project: Project) = with(project) {
+		val inferredLoader = Loader.of(project.buildFile.name.substringAfter('.').replace(".gradle.kts", ""))
 
-private fun scmDeveloperConnectionFromUrl(scmUrl: String): String =
-	scmUrl.replace("https://", "scm:git:ssh://git@").removeSuffix("/") + ".git"
+		val extension = extensions.create("platform", ModPlatformExtension::class.java).apply {
+			loader.convention(inferredLoader.id)
+			jarTask.convention(inferredLoader.jarTask)
+			sourcesJarTask.convention(inferredLoader.sourcesJarTask)
+		}
+
+		// Apply shared plugins
+		listOf("org.jetbrains.kotlin.jvm", "com.google.devtools.ksp", "dev.kikugie.fletching-table").forEach {
+			apply(
+				plugin = it
+			)
+		}
+
+		afterEvaluate {
+			val ctx = Context(
+				project = this,
+				extension = extension,
+				loader = Loader.of(extension.loader.get()),
+				stonecutter = project.sc
+			)
+			configureProject(ctx)
+		}
+	}
+
+	private fun Project.configureProject(ctx: Context) {
+		// Apply Loader Specific Plugins
+		listOf("java", "me.modmuss50.mod-publish-plugin", "idea").forEach { apply(plugin = it) }
+
+		version = ctx.fullVersion
+		ctx.extension.requiredJava.set(ctx.javaVersion)
+
+		if (ctx.loader.isFabricLike) {
+			ctx.extension.dependencies {
+				required("java") { fabricLikeVersionRange = ">=${ctx.javaVersion.majorVersion}" }
+			}
+		}
+
+		// Configure modules passing the Context
+		configureFletchingTable(ctx)
+		configureJarTask(ctx)
+		configureIdea()
+		configureProcessResources(ctx)
+		registerGenerateManifestTask(ctx)
+		configureJava(ctx.javaVersion)
+		registerBuildAndCollectTask(ctx)
+
+		configureModPublishing(
+			ctx.extension,
+			ctx.loader,
+			ctx.stonecutter,
+			ctx.basicVersion,
+			ctx.channelTag,
+			version.toString()
+		)
+
+		if (envTrue("PUB_MAVEN_ENABLE")) {
+			configureMavenPublishing(ctx.isSnapshot)
+		}
+	}
+
+	private fun Project.registerGenerateManifestTask(ctx: Context) {
+
+		val manifestCtx = ManifestContext(
+			id = ctx.modId,
+			name = ctx.modName,
+			version = ctx.baseVersion,
+			group = ctx.modGroup,
+			description = ctx.description,
+			license = ctx.license,
+			authors = ctx.authors,
+			contributors = ctx.contributors,
+			homepageUrl = ctx.homepageUrl,
+			sourcesUrl = ctx.sourcesUrl,
+			issuesUrl = ctx.issuesUrl,
+			discordUrl = ctx.discordUrl,
+			minecraft = ctx.currentMcVersion,
+			deps = ctx.extension.dependencies,
+		)
+
+		val manifestOutputDir = layout.buildDirectory.dir("generated/modManifest")
+		val generateTask = tasks.register<GenerateModManifestTask>("generateModManifest") {
+			manifestPath.set(ctx.loader.modManifestPath)
+			content.set(ctx.loader.generateManifest(manifestCtx))
+			outputDir.set(manifestOutputDir)
+		}
+
+		the<JavaPluginExtension>().sourceSets.named("main") { resources.srcDir(manifestOutputDir) }
+		tasks.named<ProcessResources>("processResources") { dependsOn(generateTask) }
+	}
+
+	private fun Project.configureProcessResources(ctx: Context) {
+		tasks.named<ProcessResources>("processResources") {
+			dependsOn(tasks.named("stonecutterGenerate"), "kspKotlin")
+			filesMatching("*.mixins.json") {
+				expand("java" to "JAVA_${ctx.javaVersion.majorVersion}")
+			}
+			exclude(ctx.loader.excludedResources + ctx.loader.modManifestPath)
+		}
+	}
+
+	private fun Project.configureJarTask(ctx: Context) {
+		tasks.withType<Jar>().configureEach {
+			archiveBaseName.set(ctx.modId)
+			if (ctx.loader is Loader.Forge) {
+				manifest.attributes(ctx.loader.mixinConfigAttribute to "${ctx.modId}.mixins.json")
+			}
+		}
+	}
+
+	private fun Project.configureFletchingTable(ctx: Context) {
+		extensions.configure<FletchingTableExtension> {
+			mixins.create("main") { mixin("default", "${ctx.modId}.mixins.json") }
+			j52j.register("main") { extension("json", "**/*.json5") }
+		}
+	}
+
+	private fun Project.registerBuildAndCollectTask(ctx: Context) {
+		tasks.register<Copy>("buildAndCollect") {
+			from(
+				tasks.named(ctx.extension.jarTask.get()),
+				tasks.named(ctx.extension.sourcesJarTask.get()),
+				tasks.named("javadocJar")
+			)
+			into(rootProject.layout.buildDirectory.file("libs/${ctx.basicVersion}"))
+			dependsOn("build")
+		}
+	}
+}
