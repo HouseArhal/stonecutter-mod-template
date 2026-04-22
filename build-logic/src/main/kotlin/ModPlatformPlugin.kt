@@ -38,10 +38,17 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 	override fun apply(project: Project) = with(project) {
 		val inferredLoader = project.buildFile.name.substringAfter('.').replace(".gradle.kts", "")
 		val inferredLoaderIsFabric = inferredLoader == "fabric"
+		val inferredLoaderIsForge = inferredLoader == "forge"
 
 		val extension = extensions.create("platform", ModPlatformExtension::class.java).apply {
 			loader.convention(inferredLoader)
-			jarTask.convention(if (inferredLoaderIsFabric) "remapJar" else "jar")
+			jarTask.convention(
+				when {
+					inferredLoaderIsFabric -> "remapJar"
+					inferredLoaderIsForge -> "reobfJar"
+					else -> "jar"
+				}
+			)
 			sourcesJarTask.convention(if (inferredLoaderIsFabric) "remapSourcesJar" else "sourcesJar")
 		}
 
@@ -79,6 +86,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 
 		extension.requiredJava.set(
 			when {
+				stonecutter.eval(stonecutter.current.version, ">=26") -> JavaVersion.VERSION_25
 				stonecutter.eval(stonecutter.current.version, ">=1.20.6") -> JavaVersion.VERSION_21
 				stonecutter.eval(stonecutter.current.version, ">=1.18") -> JavaVersion.VERSION_17
 				stonecutter.eval(stonecutter.current.version, ">=1.17") -> JavaVersion.VERSION_16
@@ -87,13 +95,26 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		)
 
 		if (isFabric) {
-			extension.dependencies { required("java") { versionRange = ">=${extension.requiredJava.get().majorVersion}" } }
+			extension.dependencies {
+				required("java") {
+					versionRange = ">=${extension.requiredJava.get().majorVersion}"
+				}
+			}
 		}
 
 		configureFletchingTable()
 		configureJarTask(modId, loader)
 		configureIdea()
-		configureProcessResources(isFabric, isNeoForge, isForge, modId, "$modVersion$channelTag", mcVersion, extension, extension.requiredJava.get())
+		configureProcessResources(
+			isFabric,
+			isNeoForge,
+			isForge,
+			modId,
+			"$modVersion$channelTag",
+			mcVersion,
+			extension,
+			extension.requiredJava.get()
+		)
 		configureJava(stonecutter, extension.requiredJava.get())
 		registerBuildAndCollectTask(extension, "$modVersion$channelTag")
 		configurePublishing(extension, loader, stonecutter, "$modVersion$channelTag", channelTag, version.toString())
@@ -106,7 +127,8 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			archiveBaseName.set(modId)
 			if (isForge) {
 				manifest.attributes(
-					"MixinConfigs" to "${modId}.mixins.json"
+					"MixinConfigs" to "${modId}.mixins.json",
+					"FMLAT" to "accesstransformer.cfg"
 				)
 			}
 		}
@@ -122,11 +144,34 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		extension: ModPlatformExtension,
 		requiredJava: JavaVersion
 	) {
+		val stonecutter = extensions.getByType<StonecutterBuildExtension>()
+
 		tasks.named<ProcessResources>("processResources") {
 			dependsOn(tasks.named("stonecutterGenerate"))
 			dependsOn("kspKotlin")
 
-			filesMatching("*.mixins.json") { expand("java" to "JAVA_${requiredJava.majorVersion}") }
+			filesMatching("*.mixins.json") {
+				val refmapLine = if (isForge) {
+					"\"refmap\": \"${modId}.mixins.refmap.json\","
+				} else {
+					""
+				}
+
+				expand(
+					"java" to "JAVA_${requiredJava.majorVersion}",
+					"refmap" to refmapLine
+				)
+			}
+
+			if (isForge) {
+				val atFile = rootProject.file("src/main/resources/aw/${stonecutter.current.version}.cfg")
+				if (atFile.exists()) {
+					from(atFile) {
+						into("META-INF")
+						rename { "accesstransformer.cfg" }
+					}
+				}
+			}
 
 			var contributors = prop("mod.contributors")
 			var authors = prop("mod.authors")
@@ -285,7 +330,7 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			}
 
 			val isForge = loader == "forge"
-			val targetName = if(isForge) {
+			val targetName = if (isForge) {
 				"reobfJar"
 			} else {
 				ext.jarTask.get()
