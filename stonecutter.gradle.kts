@@ -1,3 +1,5 @@
+@file:OptIn(dev.kikugie.stonecutter.StonecutterExperimentalAPI::class)
+
 plugins {
 	alias(libs.plugins.stonecutter)
 	alias(libs.plugins.dotenv)
@@ -35,10 +37,10 @@ stonecutter tasks {
 stonecutter parameters {
 	constants.match(node.metadata.project.substringAfterLast('-'), "fabric", "neoforge", "forge")
 	filters.include("**/*.fsh", "**/*.vsh")
-	swaps["mod_version"] = "\"" + property("mod.version") + "\";"
-	swaps["mod_id"] = "\"" + property("mod.id") + "\";"
-	swaps["mod_name"] = "\"" + property("mod.name") + "\";"
-	swaps["mod_group"] = "\"" + property("mod.group") + "\";"
-	swaps["minecraft"] = "\"" + node.metadata.version + "\";"
-	constants["release"] = property("mod.id") != "modtemplate"
+	swaps["mod_version"] = "\"${sc.properties.get<String>("mod.version")}\";"
+	swaps["mod_id"] = "\"${sc.properties.get<String>("mod.id")}\";"
+	swaps["mod_name"] = "\"${sc.properties.get<String>("mod.name")}\";"
+	swaps["mod_group"] = "\"${sc.properties.get<String>("mod.group")}\";"
+	swaps["minecraft"] = "\"${node.metadata.version}\";"
+	constants["release"] = sc.properties.get<String>("mod.id") != "modtemplate"
 }

@@ -1,6 +1,7 @@
 @file:Suppress("unused", "DuplicatedCode")
 
 import dev.kikugie.fletching_table.extension.FletchingTableExtension
+import dev.kikugie.stonecutter.StonecutterExperimentalAPI
 import org.gradle.api.DefaultTask
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -17,9 +18,12 @@ import org.gradle.internal.extensions.stdlib.toDefaultLowerCase
 import org.gradle.jvm.tasks.Jar
 import org.gradle.kotlin.dsl.*
 import org.gradle.language.jvm.tasks.ProcessResources
+import org.gradle.plugins.ide.idea.model.IdeaModel
 import javax.inject.Inject
 
-fun Project.prop(name: String): String = (findProperty(name) ?: "") as String
+@OptIn(StonecutterExperimentalAPI::class)
+fun Project.prop(name: String): String =
+	(project.sc.properties.get<String>(name))
 
 fun Project.env(variable: String): String? = providers.environmentVariable(variable).orNull
 
@@ -60,7 +64,6 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			sourcesJarTask.convention(inferredLoader.sourcesJarTask)
 		}
 
-		// Apply shared plugins
 		listOf("org.jetbrains.kotlin.jvm", "com.google.devtools.ksp", "dev.kikugie.fletching-table").forEach {
 			apply(
 				plugin = it
@@ -79,7 +82,6 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 	}
 
 	private fun Project.configureProject(ctx: Context) {
-		// Apply Loader Specific Plugins
 		listOf("java", "me.modmuss50.mod-publish-plugin", "idea").forEach { apply(plugin = it) }
 
 		version = ctx.fullVersion
@@ -91,52 +93,36 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			}
 		}
 
-		// Configure modules passing the Context
 		configureFletchingTable(ctx)
 		configureJarTask(ctx)
 		configureIdea()
 		configureProcessResources(ctx)
 		registerGenerateManifestTask(ctx)
-		configureJava(ctx.javaVersion)
+		configureJava(ctx)
 		registerBuildAndCollectTask(ctx)
 
-		configureModPublishing(
-			ctx.extension,
-			ctx.loader,
-			ctx.stonecutter,
-			ctx.basicVersion,
-			ctx.channelTag,
-			version.toString()
-		)
+		configureModPublishing(ctx)
 
 		if (envTrue("PUB_MAVEN_ENABLE")) {
-			configureMavenPublishing(ctx.isSnapshot)
+			configureMavenPublishing(ctx)
+		}
+	}
+
+	private fun Project.configureJava(ctx: Context) {
+		extensions.configure<JavaPluginExtension>("java") {
+			withSourcesJar()
+			withJavadocJar()
+			sourceCompatibility = ctx.javaVersion
+			targetCompatibility = ctx.javaVersion
 		}
 	}
 
 	private fun Project.registerGenerateManifestTask(ctx: Context) {
 
-		val manifestCtx = ManifestContext(
-			id = ctx.modId,
-			name = ctx.modName,
-			version = ctx.baseVersion,
-			group = ctx.modGroup,
-			description = ctx.description,
-			license = ctx.license,
-			authors = ctx.authors,
-			contributors = ctx.contributors,
-			homepageUrl = ctx.homepageUrl,
-			sourcesUrl = ctx.sourcesUrl,
-			issuesUrl = ctx.issuesUrl,
-			discordUrl = ctx.discordUrl,
-			minecraft = ctx.currentMcVersion,
-			deps = ctx.extension.dependencies,
-		)
-
 		val manifestOutputDir = layout.buildDirectory.dir("generated/modManifest")
 		val generateTask = tasks.register<GenerateModManifestTask>("generateModManifest") {
 			manifestPath.set(ctx.loader.modManifestPath)
-			content.set(ctx.loader.generateManifest(manifestCtx))
+			content.set(ctx.loader.generateManifest(ctx))
 			outputDir.set(manifestOutputDir)
 		}
 
@@ -159,6 +145,15 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			archiveBaseName.set(ctx.modId)
 			if (ctx.loader is Loader.Forge) {
 				manifest.attributes(ctx.loader.mixinConfigAttribute to "${ctx.modId}.mixins.json")
+			}
+		}
+	}
+
+	private fun Project.configureIdea() {
+		extensions.configure<IdeaModel>("idea") {
+			module {
+				isDownloadJavadoc = true
+				isDownloadSources = true
 			}
 		}
 	}

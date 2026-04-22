@@ -3,20 +3,25 @@ plugins {
 	id("net.neoforged.moddev.legacyforge")
 }
 
+stonecutter {
+	val (version, loader) = current.project.split('-', limit = 2)
+	properties.tags(version, loader)
+}
+
 platform {
 	loader = "forge"
 	dependencies {
 		required("minecraft") {
-			forgeLikeVersionRange = "[${prop("deps.minecraft")}]"
+			forgeLikeVersionRange.set("[${prop("deps.minecraft")}]")
 		}
 		required("forge") {
-			forgeLikeVersionRange = "[1,)"
+			forgeLikeVersionRange.set("[1,)")
 		}
 	}
 }
 
 legacyForge {
-	version = "${property("deps.minecraft")}-${property("deps.forge")}"
+	version = "${prop("deps.minecraft")}-${prop("deps.forge")}"
 
 	validateAccessTransformers = true
 
@@ -73,9 +78,4 @@ sourceSets {
 
 tasks.named("createMinecraftArtifacts") {
 	dependsOn(tasks.named("stonecutterGenerate"))
-}
-
-stonecutter {
-	val (version, loader) = current.project.split('-', limit = 2)
-	properties.tags(version, loader)
 }

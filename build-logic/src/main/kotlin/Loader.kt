@@ -1,24 +1,13 @@
 @file:Suppress("unused")
 
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
+import net.peanuuutz.tomlkt.Toml
 import org.gradle.api.NamedDomainObjectContainer
 import java.util.*
-
-data class ManifestContext(
-	val id: String,
-	val name: String,
-	val version: String,
-	val group: String,
-	val description: String,
-	val license: String,
-	val authors: List<String>,
-	val contributors: List<String>,
-	val homepageUrl: String,
-	val sourcesUrl: String,
-	val issuesUrl: String,
-	val discordUrl: String,
-	val minecraft: String,
-	val deps: DependenciesConfig,
-)
 
 sealed class Loader(val id: String) {
 	abstract val jarTask: String
@@ -28,7 +17,7 @@ sealed class Loader(val id: String) {
 
 	open val isFabricLike: Boolean = false
 
-	abstract fun generateManifest(ctx: ManifestContext): String
+	abstract fun generateManifest(ctx: Context): String
 
 	sealed class FabricLike(id: String) : Loader(id) {
 		override val isFabricLike = true
@@ -36,56 +25,54 @@ sealed class Loader(val id: String) {
 			"META-INF/mods.toml", "META-INF/neoforge.mods.toml", "aw/*.cfg", ".cache", "pack.mcmeta"
 		)
 
-		override fun generateManifest(ctx: ManifestContext): String {
-			val depBlock = buildFabricLikeDependencies(ctx.deps).takeIf { it.isNotEmpty() }?.let { ",\n$it" } ?: ""
-			return """
-                {
-                  "schemaVersion": 1,
-                  "id": "${ctx.id}",
-                  "name": "${ctx.name}",
-                  "version": "${ctx.version}",
-                  "authors": [${ctx.authors.joinToString(", ") { "\"$it\"" }}],
-                  "contributors": [${ctx.contributors.joinToString(", ") { "\"$it\"" }}],
-                  "contact": {
-                    "sources": "${ctx.sourcesUrl}",
-                    "issues": "${ctx.issuesUrl}",
-                    "homepage": "${ctx.homepageUrl}"
-                  },
-                  "custom": {
-                    "modmenu": {
-                      "links": {
-                        "modmenu.discord": "${ctx.discordUrl}"
-                      }
-                    }
-                  },
-                  "description": "${ctx.description}",
-                  "icon": "assets/icon.png",
-                  "license": "${ctx.license}",
-                  "environment": "*",
-                  "accessWidener": "aw/${ctx.minecraft}.accesswidener",
-                  "entrypoints": {
-                    "main": ["${ctx.group}.${ctx.id}.platform.fabric.FabricEntrypoint"],
-                    "client": ["${ctx.group}.${ctx.id}.platform.fabric.FabricClientEntrypoint"],
-                    "fabric-datagen": ["${ctx.group}.${ctx.id}.platform.fabric.datagen.FabricDataGeneratorEntrypoint"]
-                  },
-                  "mixins": ["${ctx.id}.mixins.json"]$depBlock
-                }
-            """.trimIndent()
+		override fun generateManifest(ctx: Context): String {
+			val manifest = FabricManifest(
+				id = ctx.modId,
+				name = ctx.modName,
+				version = ctx.baseVersion,
+				authors = ctx.authors,
+				contributors = ctx.contributors,
+				contact = mapOf(
+					"sources" to ctx.sourcesUrl,
+					"issues" to ctx.issuesUrl,
+					"homepage" to ctx.homepageUrl
+				),
+				custom = buildJsonObject {
+					putJsonObject("modmenu") {
+						putJsonObject("links") {
+							put("modmenu.discord", ctx.discordUrl)
+						}
+					}
+				},
+				description = ctx.description,
+				icon = "assets/icon.png",
+				license = ctx.licenseName,
+				accessWidener = "aw/${ctx.currentMcVersion}.accesswidener",
+				entrypoints = mapOf(
+					"main" to listOf("${ctx.modGroup}.${ctx.modId}.platform.fabric.FabricEntrypoint"),
+					"client" to listOf("${ctx.modGroup}.${ctx.modId}.platform.fabric.FabricClientEntrypoint"),
+					"fabric-datagen" to listOf("${ctx.modGroup}.${ctx.modId}.platform.fabric.datagen.FabricDataGeneratorEntrypoint")
+				),
+				mixins = listOf("${ctx.modId}.mixins.json"),
+				depends = ctx.extension.dependencies.required.associate { it.modid.get() to it.fabricLikeVersionRange.get() },
+				recommends = ctx.extension.dependencies.optional.associate { it.modid.get() to it.fabricLikeVersionRange.get() },
+				breaks = ctx.extension.dependencies.incompatible.associate { it.modid.get() to it.fabricLikeVersionRange.get() }
+			)
+			return Json { prettyPrint = true }.encodeToString(manifest)
 		}
 	}
 
-	object FabricM : FabricLike("fabricm") {
+	object FabricM : FabricLike("fabric") {
 		override val jarTask = "remapJar"
 		override val sourcesJarTask = "remapSourcesJar"
 		override val modManifestPath = "fabric.mod.json"
 	}
 
-	object FabricO : FabricLike("fabrico") {
+	object FabricO : FabricLike("fabric") {
 		override val jarTask = "remapJar"
 		override val sourcesJarTask = "remapSourcesJar"
 		override val modManifestPath = "fabric.mod.json"
 	}
-
 
 	sealed class ForgeLike(id: String) : Loader(id) {
 		override val jarTask = "jar"
@@ -94,45 +81,57 @@ sealed class Loader(val id: String) {
 			"fabric.mod.json", "aw/*.accesswidener", ".cache", "pack.mcmeta"
 		)
 
-		protected fun tomlBase(ctx: ManifestContext): String = """
-            modLoader = "javafml"
-            loaderVersion = "[2,)"
-            license = "${ctx.license}"
-            issueTrackerURL = "${ctx.issuesUrl}"
+		override fun generateManifest(ctx: Context): String {
+			val forgeDeps = mutableListOf<ForgeDependency>()
 
-            [[mods]]
-            modId = "${ctx.id}"
-            displayName = "${ctx.name}"
-            version = "${ctx.version}"
-            displayURL = "${ctx.homepageUrl}"
-            modUrl = "${ctx.homepageUrl}"
-            logoFile = "assets/icon.png"
-            authors = "${ctx.authors.joinToString(", ")}"
-            logoBlur = false
-            credits = "${ctx.authors.joinToString(", ")} Contributors: ${ctx.contributors.joinToString(", ")}"
+			fun addDeps(container: NamedDomainObjectContainer<Dependency>, type: String) {
+				container.forEach {
+					forgeDeps.add(ForgeDependency(
+						modId = it.modid.get(),
+						side = it.environment.get().uppercase(Locale.getDefault()),
+						versionRange = it.forgeLikeVersionRange.get(),
+						mandatory = type == "required",
+						type = type
+					))
+				}
+			}
 
-            description = '''${ctx.description}'''
+			addDeps(ctx.extension.dependencies.required, "required")
+			addDeps(ctx.extension.dependencies.optional, "optional")
+			addDeps(ctx.extension.dependencies.incompatible, "incompatible")
 
-            [[mixins]]
-            config = "${ctx.id}.mixins.json"
-        """.trimIndent()
+			val manifest = ForgeManifest(
+				license = ctx.licenseName,
+				issueTrackerURL = ctx.issuesUrl,
+				mods = listOf(ForgeMod(
+					modId = ctx.modId,
+					displayName = ctx.modName,
+					version = ctx.baseVersion,
+					displayURL = ctx.homepageUrl,
+					modUrl = ctx.homepageUrl,
+					logoFile = "assets/icon.png",
+					authors = ctx.authors.joinToString(", "),
+					credits = "${ctx.authors.joinToString(", ")} Contributors: ${ctx.contributors.joinToString(", ")}",
+					description = ctx.description
+				)),
+				dependencies = mapOf(ctx.modId to forgeDeps),
+				mixins = listOf(ForgeMixin("${ctx.modId}.mixins.json"))
+			)
+
+			return Toml { }.encodeToString(manifest)
+		}
 	}
 
 	object NeoForge : ForgeLike("neoforge") {
 		override val modManifestPath = "META-INF/neoforge.mods.toml"
 		override val excludedResources = super.excludedResources + "META-INF/mods.toml"
-
-		override fun generateManifest(ctx: ManifestContext): String =
-			tomlBase(ctx) + "\n" + buildForgeLikeDependencies(ctx.id, ctx.deps)
 	}
 
 	object Forge : ForgeLike("forge") {
 		override val modManifestPath = "META-INF/mods.toml"
 		override val excludedResources = super.excludedResources + "META-INF/neoforge.mods.toml"
 		val mixinConfigAttribute = "MixinConfigs"
-
-		override fun generateManifest(ctx: ManifestContext): String =
-			tomlBase(ctx) + "\n" + buildForgeLikeDependencies(ctx.id, ctx.deps)
+		override val jarTask = "reobfJar"
 	}
 
 	companion object {
@@ -144,41 +143,4 @@ sealed class Loader(val id: String) {
 			else -> error("Unknown loader: '$id'")
 		}
 	}
-}
-
-private fun buildFabricLikeDependencies(deps: DependenciesConfig): String = buildString {
-	fun jsonGroup(name: String, container: NamedDomainObjectContainer<Dependency>): String? {
-		if (container.isEmpty()) return null
-		val entries = container.joinToString(",\n    ") {
-			"\"${it.modid.get()}\": \"${it.fabricLikeVersionRange.get()}\""
-		}
-		return "  \"$name\": {\n    $entries\n  }"
-	}
-
-	val groups = listOfNotNull(
-		jsonGroup("depends", deps.required),
-		jsonGroup("recommends", deps.optional),
-		jsonGroup("breaks", deps.incompatible)
-	)
-	if (groups.isNotEmpty()) append(groups.joinToString(",\n"))
-}
-
-private fun buildForgeLikeDependencies(modId: String, deps: DependenciesConfig): String = buildString {
-	fun appendBlock(container: NamedDomainObjectContainer<Dependency>, type: String) {
-		container.forEach {
-			appendLine(
-				"""
-                [[dependencies.$modId]]
-                modId = "${it.modid.get()}"
-                side = "${it.environment.get().uppercase(Locale.getDefault())}"
-                versionRange = "${it.forgeLikeVersionRange.get()}"
-                mandatory = ${type == "required"}
-                type = "$type"
-            """.trimIndent()
-			)
-		}
-	}
-	appendBlock(deps.required, "required")
-	appendBlock(deps.optional, "optional")
-	appendBlock(deps.incompatible, "incompatible")
 }

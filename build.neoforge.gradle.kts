@@ -3,25 +3,35 @@ plugins {
 	id("net.neoforged.moddev")
 }
 
+stonecutter {
+	val (version, loader) = current.project.split('-', limit = 2)
+	properties.tags(version, loader)
+
+	replacements.string(current.parsed >= "1.21.11") {
+		replace("ResourceLocation", "Identifier")
+		replace("location()", "identifier()")
+	}
+}
+
 platform {
 	loader = "neoforge"
 	dependencies {
 		required("minecraft") {
-			forgeLikeVersionRange = "[${prop("deps.minecraft")}]"
+			forgeLikeVersionRange.set("[${prop("deps.minecraft")}]")
 		}
 		required("neoforge") {
-			forgeLikeVersionRange = "[1,)"
+			forgeLikeVersionRange.set("[1,)")
 		}
 	}
 }
 
 neoForge {
-	version = property("deps.neoforge") as String
+	version = prop("deps.neoforge")
 	accessTransformers.from(rootProject.file("src/main/resources/aw/${stonecutter.current.version}.cfg"))
 	validateAccessTransformers = true
 
 	if (hasProperty("deps.parchment")) parchment {
-		val (mc, ver) = (property("deps.parchment") as String).split(':')
+		val (mc, ver) = prop("deps.parchment").split(':')
 		mappingsVersion = ver
 		minecraftVersion = mc
 	}
@@ -41,7 +51,7 @@ neoForge {
 	}
 
 	mods {
-		register(property("mod.id") as String) {
+		register(prop("mod.id")) {
 			sourceSet(sourceSets["main"])
 		}
 	}
@@ -60,14 +70,4 @@ dependencies {
 
 tasks.named("createMinecraftArtifacts") {
 	dependsOn(tasks.named("stonecutterGenerate"))
-}
-
-stonecutter {
-	val (version, loader) = current.project.split('-', limit = 2)
-	properties.tags(version, loader)
-
-	replacements.string(current.parsed >= "1.21.11") {
-		replace("ResourceLocation", "Identifier")
-		replace("location()", "identifier()")
-	}
 }

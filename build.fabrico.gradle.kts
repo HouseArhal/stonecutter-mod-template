@@ -3,18 +3,28 @@ plugins {
 	id("fabric-loom")
 }
 
+stonecutter {
+	val (version, loader) = current.project.split('-', limit = 2)
+	properties.tags(version, loader)
+
+	replacements.string(current.parsed >= "1.21.11") {
+		replace("ResourceLocation", "Identifier")
+		replace("location()", "identifier()")
+	}
+}
+
 platform {
 	loader = "fabrico"
 	dependencies {
 		required("minecraft") {
-			fabricLikeVersionRange = prop("deps.minecraft")
+			fabricLikeVersionRange.set(prop("deps.minecraft"))
 		}
 		required("fabric-api") {
 			slug("fabric-api")
-			fabricLikeVersionRange = ">=${prop("deps.fabric-api")}"
+			fabricLikeVersionRange.set(">=${prop("deps.fabric-api")}")
 		}
 		required("fabricloader") {
-			fabricLikeVersionRange = ">=${libs.fabric.loader.get().version}"
+			fabricLikeVersionRange.set(">=${prop("deps.fabric-loader")}")
 		}
 		optional("modmenu") {}
 	}
@@ -59,19 +69,9 @@ dependencies {
 			officialMojangMappings()
 			if (hasProperty("deps.parchment")) parchment("org.parchmentmc.data:parchment-${prop("deps.parchment")}@zip")
 		})
-	modImplementation(libs.fabric.loader)
+	modImplementation("net.fabricmc:fabric-loader:${prop("deps.fabric-loader")}")
 	implementation(libs.moulberry.mixinconstraints)
 	include(libs.moulberry.mixinconstraints)
 	modImplementation("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric-api")}")
 	modLocalRuntime("com.terraformersmc:modmenu:${prop("deps.modmenu")}")
-}
-
-stonecutter {
-	val (version, loader) = current.project.split('-', limit = 2)
-	properties.tags(version, loader)
-
-	replacements.string(current.parsed >= "1.21.11") {
-		replace("ResourceLocation", "Identifier")
-		replace("location()", "identifier()")
-	}
 }

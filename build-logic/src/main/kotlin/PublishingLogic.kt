@@ -1,4 +1,4 @@
-@file:Suppress("unused")
+@file:Suppress("unused", "DuplicatedCode")
 
 import com.vanniktech.maven.publish.MavenPublishBaseExtension
 import me.modmuss50.mpp.ModPublishExtension
@@ -31,9 +31,9 @@ fun Project.configureMavenPublishing(ctx: Context) {
 			url.set(ctx.homepageUrl)
 			licenses {
 				license {
-					name.set(ctx.license)
-					url.set(project.sc.properties["mod.license.url"] as String)
-					distribution.set(project.sc.properties["mod.license.dist"] as String)
+					name.set(ctx.licenseName)
+					url.set(ctx.licenseUrl)
+					distribution.set(ctx.licenseDist)
 				}
 			}
 			developers {
@@ -49,16 +49,15 @@ fun Project.configureMavenPublishing(ctx: Context) {
 			scm {
 				url.set(ctx.sourcesUrl)
 				connection.set(ctx.sourcesUrl.replace("https://", "scm:git:git://").removeSuffix("/") + ".git")
-				developerConnection.set(ctx.sourcesUrl.replace("https://", "scm:git:ssh://git@").removeSuffix("/") + ".git")
+				developerConnection.set(
+					ctx.sourcesUrl.replace("https://", "scm:git:ssh://git@").removeSuffix("/") + ".git"
+				)
 			}
 		}
 	}
 }
 
 fun Project.configureModPublishing(ctx: Context) {
-	val additionalVersions = (project.sc.properties.get<String?>("publish.additionalVersions"))
-		?.split(',')?.map(String::trim)?.filter(String::isNotEmpty).orEmpty()
-
 	val releaseType = ReleaseType.of(
 		ctx.channelTag.substringAfter('-').substringBefore('.').ifEmpty { "stable" })
 
@@ -81,18 +80,18 @@ fun Project.configureModPublishing(ctx: Context) {
 		changelog.set(rootProject.file("CHANGELOG.md").readText())
 		modLoaders.add(ctx.loader.id)
 
-		displayName = "${ctx.modName} ${ctx.basicVersion} ${ctx.loader.id.replaceFirstChar(Char::titlecase)} ${ctx.currentMcVersion}"
+		displayName =
+			"${ctx.modName} ${ctx.basicVersion} ${ctx.loader.id.replaceFirstChar(Char::titlecase)} ${ctx.currentMcVersion}"
 
-		modrinth(ctx, additionalVersions, mrStaging, modrinthAccessToken)
-		if (!mrStaging) curseforge(ctx, additionalVersions, curseforgeAccessToken)
+		val deps = ctx.extension.dependencies
+
+		modrinth(ctx, ctx.publishAdditionalVersions, mrStaging, modrinthAccessToken, deps)
+		if (!mrStaging) curseforge(ctx, ctx.publishAdditionalVersions, curseforgeAccessToken, deps)
 	}
 }
 
 private fun ModPublishExtension.modrinth(
-	ctx: Context,
-	additionalVersions: List<String>,
-	staging: Boolean,
-	accessToken: String?
+	ctx: Context, additionalVersions: List<String>, staging: Boolean, accessToken: String?, deps: DependenciesConfig
 ) = modrinth {
 	if (staging) apiEndpoint = "https://staging-api.modrinth.com/v2"
 
@@ -102,27 +101,25 @@ private fun ModPublishExtension.modrinth(
 	minecraftVersions.addAll(listOf(ctx.currentMcVersion) + additionalVersions)
 
 	if (!staging) {
-		ctx.extension.dependencies.required.forEach { dep -> whenNotNull(dep.modrinth) { requires(it) } }
-		ctx.extension.dependencies.optional.forEach { dep -> whenNotNull(dep.modrinth) { optional(it) } }
-		ctx.extension.dependencies.incompatible.forEach { dep -> whenNotNull(dep.modrinth) { incompatible(it) } }
-		ctx.extension.dependencies.embeds.forEach { dep -> whenNotNull(dep.modrinth) { embeds(it) } }
+		deps.required.forEach { dep -> whenNotNull(dep.modrinth) { requires(it) } }
+		deps.optional.forEach { dep -> whenNotNull(dep.modrinth) { optional(it) } }
+		deps.incompatible.forEach { dep -> whenNotNull(dep.modrinth) { incompatible(it) } }
+		deps.embeds.forEach { dep -> whenNotNull(dep.modrinth) { embeds(it) } }
 	}
 }
 
 private fun ModPublishExtension.curseforge(
-	ctx: Context,
-	additionalVersions: List<String>,
-	accessToken: String?
+	ctx: Context, additionalVersions: List<String>, accessToken: String?, deps: DependenciesConfig
 ) = curseforge {
 	projectId = project.env("PUB_CURSEFORGE_PROJECT_ID")
 
 	this.accessToken = accessToken
 	minecraftVersions.addAll(listOf(ctx.currentMcVersion) + additionalVersions)
 
-	ctx.extension.dependencies.required.forEach { dep -> whenNotNull(dep.curseforge) { requires(it) } }
-	ctx.extension.dependencies.optional.forEach { dep -> whenNotNull(dep.curseforge) { optional(it) } }
-	ctx.extension.dependencies.incompatible.forEach { dep -> whenNotNull(dep.curseforge) { incompatible(it) } }
-	ctx.extension.dependencies.embeds.forEach { dep -> whenNotNull(dep.curseforge) { embeds(it) } }
+	deps.required.forEach { dep -> whenNotNull(dep.curseforge) { requires(it) } }
+	deps.optional.forEach { dep -> whenNotNull(dep.curseforge) { optional(it) } }
+	deps.incompatible.forEach { dep -> whenNotNull(dep.curseforge) { incompatible(it) } }
+	deps.embeds.forEach { dep -> whenNotNull(dep.curseforge) { embeds(it) } }
 }
 
 private fun whenNotNull(stringProp: Property<String>, action: (String) -> Unit) {
