@@ -1,6 +1,6 @@
 plugins {
 	id("mod-platform")
-	id("fabric-loom")
+	id("net.fabricmc.fabric-loom")
 }
 
 stonecutter {
@@ -14,17 +14,17 @@ stonecutter {
 }
 
 platform {
-	loader = "fabricm"
+	loader = "fabric-m"
 	dependencies {
 		required("minecraft") {
-			fabricLikeVersionRange = (prop("deps.minecraft"))
+			fabricLikeVersionRange = prop("deps.minecraft")
 		}
 		required("fabric-api") {
 			slug("fabric-api")
-			fabricLikeVersionRange.set(">=${prop("deps.fabric-api")}")
+			fabricLikeVersionRange = ">=${prop("deps.fabric-api")}"
 		}
 		required("fabricloader") {
-			fabricLikeVersionRange.set(">=${prop("deps.fabric-loader")}")
+			fabricLikeVersionRange = ">=${prop("deps.fabric-loader")}"
 		}
 		optional("modmenu") {}
 	}

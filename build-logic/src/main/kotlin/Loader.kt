@@ -136,8 +136,8 @@ sealed class Loader(val id: String) {
 
 	companion object {
 		fun of(id: String): Loader = when (id) {
-			"fabrico" -> FabricO
-			"fabricm" -> FabricM
+			"fabric-o" -> FabricO
+			"fabric-m" -> FabricM
 			"neoforge" -> NeoForge
 			"forge" -> Forge
 			else -> error("Unknown loader: '$id'")

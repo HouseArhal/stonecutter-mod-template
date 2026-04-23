@@ -43,6 +43,7 @@ class Context(
 			?: emptyList()
 
 	val javaVersion: JavaVersion = when {
+		stonecutter.eval(stonecutter.current.version, ">=26") -> JavaVersion.VERSION_25
 		stonecutter.eval(currentMcVersion, ">=1.20.6") -> JavaVersion.VERSION_21
 		stonecutter.eval(currentMcVersion, ">=1.18") -> JavaVersion.VERSION_17
 		stonecutter.eval(currentMcVersion, ">=1.17") -> JavaVersion.VERSION_16
