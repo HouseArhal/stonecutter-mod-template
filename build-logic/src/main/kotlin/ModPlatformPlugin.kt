@@ -94,10 +94,10 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 		}
 
 		configureFletchingTable(ctx)
+		registerGenerateManifestTask(ctx)
 		configureJarTask(ctx)
 		configureIdea()
 		configureProcessResources(ctx)
-		registerGenerateManifestTask(ctx)
 		configureJava(ctx)
 		registerBuildAndCollectTask(ctx)
 
@@ -128,7 +128,11 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 
 		the<JavaPluginExtension>().sourceSets.named("main") { resources.srcDir(manifestOutputDir) }
 		tasks.named<ProcessResources>("processResources") { dependsOn(generateTask) }
-		tasks.named(ctx.loader.sourcesJarTask) { dependsOn(generateTask) }
+		tasks.withType<Jar>().configureEach {
+			if (name == ctx.loader.sourcesJarTask) {
+				dependsOn(generateTask)
+			}
+		}
 	}
 
 	@Suppress("UnstableApiUsage")
@@ -138,13 +142,15 @@ abstract class ModPlatformPlugin @Inject constructor() : Plugin<Project> {
 			filesMatching("*.mixins.json") {
 				expand("java" to "JAVA_${ctx.javaVersion.majorVersion}")
 			}
-			exclude(ctx.loader.excludedResources + ctx.loader.modManifestPath)
+			exclude(ctx.loader.excludedResources)
 		}
 	}
 
 	private fun Project.configureJarTask(ctx: Context) {
+		val generateTask = tasks.named("generateModManifest")
 		tasks.withType<Jar>().configureEach {
 			archiveBaseName.set(ctx.modId)
+			dependsOn(generateTask)
 			if (ctx.loader is Loader.Forge) {
 				manifest.attributes(ctx.loader.mixinConfigAttribute to "${ctx.modId}.mixins.json")
 			}
