@@ -49,4 +49,5 @@ bin/
 ### Jetbrains ###
 .idea/
 !.idea/icon.png
+!.idea/externalDependencies.xml
 !.idea/icon.svg
