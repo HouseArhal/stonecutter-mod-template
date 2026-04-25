@@ -26,20 +26,20 @@ legacyForge {
 	validateAccessTransformers = true
 
 	accessTransformers.from(
-		rootProject.file("src/main/resources/aw/${stonecutter.current.version}.cfg")
+		rootProject.file("src/main/resources/aw/${sc.current.version}.cfg")
 	)
 
 	runs {
 		register("client") {
 			client()
 			gameDirectory = file("run/")
-			ideName = "Forge Client (${stonecutter.current.version})"
+			ideName = "Forge Client (${sc.current.version})"
 			programArgument("--username=Dev")
 		}
 		register("server") {
 			server()
 			gameDirectory = file("run/")
-			ideName = "Forge Server (${stonecutter.current.version})"
+			ideName = "Forge Server (${sc.current.version})"
 		}
 	}
 
@@ -71,7 +71,7 @@ dependencies {
 sourceSets {
 	main {
 		resources.srcDir(
-			"${rootDir}/versions/datagen/${stonecutter.current.version.split("-")[0]}/src/main/generated"
+			"${rootDir}/versions/datagen/${sc.current.version.split("-")[0]}/src/main/generated"
 		)
 	}
 }
