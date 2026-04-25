@@ -9,8 +9,46 @@ permissions:
   contents: write
 
 jobs:
+  validate:
+    name: Validate Tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag matches version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION=$(grep '^mod\.version' stonecutter.properties.toml | cut -d'"' -f2)
+          CHANNEL_TAG=$(grep '^mod\.channel_tag' stonecutter.properties.toml | cut -d'"' -f2)
+          FULL_VERSION="${VERSION}${CHANNEL_TAG}"
+
+          echo "Validating tag '$TAG' against version '$FULL_VERSION'..."
+          if [[ "$TAG" != "$FULL_VERSION" ]]; then
+            echo "::error::Tag '$TAG' does not match version '$FULL_VERSION' in gradle.properties."
+
+            if gh release view "$TAG" &>/dev/null; then
+              echo "Deleting GitHub release for $TAG..."
+              gh release delete "$TAG" -y
+            fi
+
+            git push origin ":refs/tags/$TAG"
+            exit 1
+          fi
+          echo "✓ Tag matches version."
+
   build:
+    needs: validate
     uses: ./.github/workflows/build_reusable.yml
+    with:
+      release: true
 
   prepare:
     name: Prepare Release
@@ -21,9 +59,6 @@ jobs:
 
     outputs:
       publish_github: ${{ steps.check.outputs.publish_github }}
-
-    env:
-      MOD_IS_RELEASE: ${{ vars.MOD_IS_RELEASE }}
 
     steps:
       - name: Checkout repository
@@ -37,41 +72,10 @@ jobs:
           sed -i "s|%%%repo_url%%%|${REPO_URL}|g" cliff.toml
 
       - name: Generate changelog with git-cliff
-        id: cliff
         uses: orhun/git-cliff-action@v4
         with:
           args: --latest --strip header --output CHANGELOG.md
           version: 'v2.10.1'
-
-      - name: Read version from gradle.properties
-        id: read-props
-        run: |
-          VERSION=$(grep '^mod.version=' gradle.properties | cut -d'=' -f2)
-          CHANNEL_TAG=$(grep '^mod.channel_tag=' gradle.properties | cut -d'=' -f2)
-          FULL_VERSION="${VERSION}${CHANNEL_TAG}"
-          echo "full_version=$FULL_VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Validate tag matches version
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          FULL_VERSION="${{ steps.read-props.outputs.full_version }}"
-
-          echo "Validating tag '$TAG' against version '$FULL_VERSION'..."
-          if [[ "$TAG" != "$FULL_VERSION" ]]; then
-            echo "::error::Tag '$TAG' does not match version '$FULL_VERSION' in gradle.properties."
-            echo "Deleting tag and release..."
-
-            if gh release view "$TAG" &>/dev/null; then
-              echo "Deleting GitHub release for $TAG..."
-              gh release delete "$TAG" -y
-            fi
-
-            git push origin ":refs/tags/$TAG"
-            exit 1
-          fi
-          echo "✓ Tag matches version."
 
       - name: Check GitHub releases toggle
         id: check
@@ -151,7 +155,7 @@ jobs:
     continue-on-error: true
 
     env:
-      MOD_IS_RELEASE: ${{ vars.MOD_IS_RELEASE }}
+      MOD_IS_RELEASE: true
       PUB_DRY_RUN: ${{ vars.PUB_DRY_RUN }}
       PUB_MODS_ENABLE: ${{ vars.PUB_MODS_ENABLE }}
       PUB_MAVEN_ENABLE: ${{ vars.PUB_MAVEN_ENABLE }}
