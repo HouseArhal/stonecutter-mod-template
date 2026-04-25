@@ -62,6 +62,12 @@ repositories {
 	strictMaven("https://api.modrinth.com/maven", "maven.modrinth") { name = "Modrinth" }
 }
 
+configurations.all {
+	resolutionStrategy {
+		force("net.fabricmc:fabric-loader:${prop("deps.fabric-loader")}")
+	}
+}
+
 dependencies {
 	minecraft("com.mojang:minecraft:${prop("deps.minecraft")}")
 	mappings(
