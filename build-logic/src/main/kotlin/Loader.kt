@@ -9,6 +9,9 @@ import net.peanuuutz.tomlkt.Toml
 import org.gradle.api.NamedDomainObjectContainer
 import java.util.*
 
+private val JSON = Json { prettyPrint = true; encodeDefaults = true }
+private val TOML = Toml { }
+
 sealed class Loader(val id: String) {
 	abstract val jarTask: String
 	abstract val sourcesJarTask: String
@@ -33,9 +36,7 @@ sealed class Loader(val id: String) {
 				authors = ctx.authors,
 				contributors = ctx.contributors,
 				contact = mapOf(
-					"sources" to ctx.sourcesUrl,
-					"issues" to ctx.issuesUrl,
-					"homepage" to ctx.homepageUrl
+					"sources" to ctx.sourcesUrl, "issues" to ctx.issuesUrl, "homepage" to ctx.homepageUrl
 				),
 				custom = buildJsonObject {
 					putJsonObject("modmenu") {
@@ -56,9 +57,8 @@ sealed class Loader(val id: String) {
 				mixins = listOf("${ctx.modId}.mixins.json"),
 				depends = ctx.extension.dependencies.required.associate { it.modid.get() to it.fabricLikeVersionRange.get() },
 				recommends = ctx.extension.dependencies.optional.associate { it.modid.get() to it.fabricLikeVersionRange.get() },
-				breaks = ctx.extension.dependencies.incompatible.associate { it.modid.get() to it.fabricLikeVersionRange.get() }
-			)
-			return Json { prettyPrint = true }.encodeToString(manifest)
+				breaks = ctx.extension.dependencies.incompatible.associate { it.modid.get() to it.fabricLikeVersionRange.get() })
+			return JSON.encodeToString(manifest)
 		}
 	}
 
@@ -86,13 +86,15 @@ sealed class Loader(val id: String) {
 
 			fun addDeps(container: NamedDomainObjectContainer<Dependency>, type: String) {
 				container.forEach {
-					forgeDeps.add(ForgeDependency(
-						modId = it.modid.get(),
-						side = it.environment.get().uppercase(Locale.getDefault()),
-						versionRange = it.forgeLikeVersionRange.get(),
-						mandatory = type == "required",
-						type = type
-					))
+					forgeDeps.add(
+						ForgeDependency(
+							modId = it.modid.get(),
+							side = it.environment.get().uppercase(Locale.getDefault()),
+							versionRange = it.forgeLikeVersionRange.get(),
+							mandatory = type == "required",
+							type = type
+						)
+					)
 				}
 			}
 
@@ -101,24 +103,22 @@ sealed class Loader(val id: String) {
 			addDeps(ctx.extension.dependencies.incompatible, "incompatible")
 
 			val manifest = ForgeManifest(
-				license = ctx.licenseName,
-				issueTrackerURL = ctx.issuesUrl,
-				mods = listOf(ForgeMod(
-					modId = ctx.modId,
-					displayName = ctx.modName,
-					version = ctx.baseVersion,
-					displayURL = ctx.homepageUrl,
-					modUrl = ctx.homepageUrl,
-					logoFile = "assets/icon.png",
-					authors = ctx.authors.joinToString(", "),
-					credits = "${ctx.authors.joinToString(", ")} Contributors: ${ctx.contributors.joinToString(", ")}",
-					description = ctx.description
-				)),
-				dependencies = mapOf(ctx.modId to forgeDeps),
-				mixins = listOf(ForgeMixin("${ctx.modId}.mixins.json"))
+				license = ctx.licenseName, issueTrackerURL = ctx.issuesUrl, mods = listOf(
+					ForgeMod(
+						modId = ctx.modId,
+						displayName = ctx.modName,
+						version = ctx.baseVersion,
+						displayURL = ctx.homepageUrl,
+						modUrl = ctx.homepageUrl,
+						logoFile = "assets/icon.png",
+						authors = ctx.authors.joinToString(", "),
+						credits = "${ctx.authors.joinToString(", ")} Contributors: ${ctx.contributors.joinToString(", ")}",
+						description = ctx.description
+					)
+				), dependencies = mapOf(ctx.modId to forgeDeps), mixins = listOf(ForgeMixin("${ctx.modId}.mixins.json"))
 			)
 
-			return Toml { }.encodeToString(manifest)
+			return TOML.encodeToString(manifest)
 		}
 	}
 

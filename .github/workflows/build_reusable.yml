@@ -13,6 +13,9 @@ jobs:
     outputs:
       artifact-name: ${{ steps.upload.outputs.artifact-name }}
 
+    env:
+      MOD_IS_RELEASE: ${{ vars.MOD_IS_RELEASE }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -44,6 +47,7 @@ jobs:
         run: ./gradlew buildAndCollect --no-daemon
 
       - name: Upload artifacts
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: build-artifacts
