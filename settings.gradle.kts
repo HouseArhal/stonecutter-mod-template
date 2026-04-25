@@ -32,7 +32,7 @@ stonecutter {
 
 private fun getBuildscript(loader: String, version: String): String {
 	if (loader == "fabric") {
-		return if (version.startsWith("1")) { // this will be a problem in the far future lol
+		return if (version.startsWith("1.")) {
 			"build.fabric-o.gradle.kts"
 		} else {
 			"build.fabric-m.gradle.kts"
