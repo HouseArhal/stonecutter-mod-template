@@ -51,5 +51,3 @@ class Context(
 	}
 }
 
-val Project.sc: StonecutterBuildExtension
-	get() = extensions.getByType<StonecutterBuildExtension>()

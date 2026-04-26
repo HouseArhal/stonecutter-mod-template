@@ -2,6 +2,7 @@
 
 import dev.kikugie.fletching_table.extension.FletchingTableExtension
 import dev.kikugie.stonecutter.StonecutterExperimentalAPI
+import dev.kikugie.stonecutter.build.StonecutterBuildExtension
 import org.gradle.api.DefaultTask
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -21,9 +22,11 @@ import org.gradle.language.jvm.tasks.ProcessResources
 import org.gradle.plugins.ide.idea.model.IdeaModel
 import javax.inject.Inject
 
+val Project.sc: StonecutterBuildExtension
+	get() = extensions.getByType<StonecutterBuildExtension>()
+
 @OptIn(StonecutterExperimentalAPI::class)
-fun Project.prop(name: String): String =
-	(project.sc.properties.get<String>(name))
+fun Project.prop(name: String): String = (project.sc.properties.get<String>(name))
 
 fun Project.env(variable: String): String? = providers.environmentVariable(variable).orNull
 
