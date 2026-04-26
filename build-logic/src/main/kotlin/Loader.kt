@@ -63,8 +63,8 @@ sealed class Loader(val id: String) {
 	}
 
 	object FabricM : FabricLike("fabric") {
-		override val jarTask = "remapJar"
-		override val sourcesJarTask = "remapSourcesJar"
+		override val jarTask = "jar"
+		override val sourcesJarTask = "sourcesJar"
 		override val modManifestPath = "fabric.mod.json"
 	}
 

@@ -2,6 +2,7 @@ package com.example.modtemplate;
 
 import com.example.modtemplate.platform.Platform;
 
+import net.minecraft.resources.ResourceLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,7 +12,7 @@ import com.example.modtemplate.platform.fabric.FabricPlatform;
 /*import com.example.modtemplate.platform.neoforge.NeoforgePlatform;
  *///?} forge {
 /*import com.example.modtemplate.platform.forge.ForgePlatform;
-*///?}
+ *///?}
 
 @SuppressWarnings("LoggingSimilarMessage")
 public class ModTemplate {
@@ -44,6 +45,22 @@ public class ModTemplate {
 		/*return new NeoforgePlatform();
 		 *///?} forge {
 		/*return new ForgePlatform();
+		 *///?}
+	}
+
+	private static ResourceLocation id(String path) {
+		//? > 1.19.2 {
+		return ResourceLocation.fromNamespaceAndPath(MOD_ID, path);
+		 //?} <= 1.19.2 {
+		/*return new ResourceLocation(MOD_ID, path);
+		*///?}
+	}
+
+	private static ResourceLocation id(String namespace, String path) {
+		//? > 1.19.2 {
+		return ResourceLocation.fromNamespaceAndPath(namespace, path);
+		 //?} <= 1.19.2 {
+		/*return new ResourceLocation(namespace, path);
 		*///?}
 	}
 }

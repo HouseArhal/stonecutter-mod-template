@@ -3,17 +3,20 @@ package com.example.modtemplate.platform.fabric.datagen;
 //? fabric && != 1.19.2 {
 
 import com.example.modtemplate.ModTemplate;
-import net.fabricmc.fabric.api.datagen.v1.FabricDataOutput;
+
 import net.fabricmc.fabric.api.datagen.v1.provider.FabricRecipeProvider;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.data.PackOutput;
 import net.minecraft.data.recipes.RecipeCategory;
 import net.minecraft.data.recipes.RecipeOutput;
 import net.minecraft.data.recipes.RecipeProvider;
 import net.minecraft.data.recipes.ShapelessRecipeBuilder;
 import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.NotNull;
+import net.fabricmc.fabric.api.datagen.v1.FabricDataOutput;
+
+//? if 1.21.1
+//import net.minecraft.data.PackOutput;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -25,6 +28,7 @@ public class ModRecipeProvider extends FabricRecipeProvider {
 		super(output, registriesFuture);
 		this.registriesFuture = registriesFuture;
 	}
+
 
 	//? if 1.21.1 {
 	/*@Override

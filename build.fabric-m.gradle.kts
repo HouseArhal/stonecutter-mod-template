@@ -11,6 +11,9 @@ stonecutter {
 		replace("ResourceLocation", "Identifier")
 		replace("location()", "identifier()")
 	}
+	replacements.string(current.parsed >= "26.1.2") {
+		replace("FabricDataOutput", "FabricPackOutput")
+	}
 }
 
 platform {
@@ -64,9 +67,9 @@ repositories {
 
 dependencies {
 	minecraft("com.mojang:minecraft:${prop("deps.minecraft")}")
-	modImplementation("net.fabricmc:fabric-loader:${prop("deps.fabric-loader")}")
+	implementation("net.fabricmc:fabric-loader:${prop("deps.fabric-loader")}")
 	implementation(libs.moulberry.mixinconstraints)
 	include(libs.moulberry.mixinconstraints)
-	modImplementation("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric-api")}")
-	modLocalRuntime("com.terraformersmc:modmenu:${prop("deps.modmenu")}")
+	implementation("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric-api")}")
+	localRuntime("com.terraformersmc:modmenu:${prop("deps.modmenu")}")
 }
