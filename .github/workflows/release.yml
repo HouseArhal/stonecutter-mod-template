@@ -10,11 +10,15 @@ on:
     branches:
       - main
       - master
+    tags:
+        - '*'
 
   pull_request:
     branches:
       - main
       - master
+    tags:
+      - '*'
 
 permissions:
   contents: write
