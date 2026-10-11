@@ -1,8 +1,10 @@
 name: build
-on: [ push, pull_request ]
+on: push
 
 jobs:
   build:
+    if: contains(github.event.head_commit.message, '-build')
+
     name: Build Project
     runs-on: ubuntu-latest
 
